@@ -16,7 +16,7 @@ import numpy as np
 
 from climetlab.decorators import cached_method, normalize
 from climetlab.indexing.cube import index_to_coords
-from climetlab.readers.grib.index import GribFieldSet
+from climetlab.readers.grib.index import FieldSet
 from climetlab.utils.dates import to_datetime
 
 LOG = logging.getLogger(__name__)
@@ -26,6 +26,10 @@ class ConstantMaker:
     def __init__(self, field):
         self.field = field
         self.shape = self.field.shape
+
+    @property
+    def resolution(self):
+        return self.field.resolution
 
     @cached_method
     def grid_points(self):
@@ -165,19 +169,38 @@ class ConstantMaker:
 
 
 class ConstantField:
-    def __init__(self, date, param, proc, shape, number=None):
+    def __init__(
+        self,
+        maker,
+        date,
+        param,
+        proc,
+        number=None,
+    ):
+        self.maker = maker
         self.date = date
         self.param = param
         self.number = number
         self.proc = proc
-        self.shape = shape
         self._metadata = dict(
             valid_datetime=date if isinstance(date, str) else date.isoformat(),
             param=param,
             level=None,
             levelist=None,
             number=number,
+            levtype=None,
         )
+
+    @property
+    def resolution(self):
+        return self.maker.resolution
+
+    @property
+    def shape(self):
+        return self.maker.shape
+
+    def grid_points(self):
+        return self.maker.grid_points()
 
     def to_numpy(self, reshape=True, dtype=None):
         values = self.proc(self.date)
@@ -216,7 +239,7 @@ def make_datetime(date, time):
     return datetime.datetime(date.year, date.month, date.day, time)
 
 
-class Constants(GribFieldSet):
+class Constants(FieldSet):
     def __init__(self, source_or_dataset, request={}, **kwargs):
         request = dict(**request)
         request.update(kwargs)
@@ -299,10 +322,10 @@ class Constants(GribFieldSet):
         number = self.numbers[number]
 
         return ConstantField(
+            self.maker,
             date,
             param,
             self.procs[param],
-            self.maker.shape,
             number=number,
         )
 
